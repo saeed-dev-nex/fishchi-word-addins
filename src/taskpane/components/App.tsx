@@ -1,202 +1,314 @@
-// In: word-addin/src/taskpane/components/App.tsx
-
 import * as React from "react";
-import { useState, useEffect, useRef } from "react";
+import {
+  FluentProvider,
+  webLightTheme,
+  Title1,
+  Body1,
+  Button,
+  Spinner,
+  makeStyles,
+  tokens,
+} from "@fluentui/react-components";
+import { v4 as uuidv4 } from "uuid";
+import { useState, useEffect } from "react";
+// --- NEW STRATEGY: Import OfficeRuntime ---
+// This gives us access to the stable, async storage
 
-//
-// --- Fluent UI v9 Imports ---
-//
-// We import from '@fluentui/react-components'
-import { Button, Spinner, Text, makeStyles, shorthands } from "@fluentui/react-components";
-
-/* global Office */
-
-//
-// --- v9 Styling (makeStyles) ---
-//
+// --- Styles Configuration ---
 const useStyles = makeStyles({
-  root: {
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "stretch", // Use stretch for full-width items
-    justifyContent: "flex-start",
-    ...shorthands.padding("20px"),
-    ...shorthands.gap("15px"),
-    textAlign: "center",
-  },
-  center: {
+  container: {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
     justifyContent: "center",
-    ...shorthands.gap("15px"),
+    height: "100vh",
+    padding: "20px",
+    textAlign: "center",
+  },
+  logo: {
+    width: "80px",
+    height: "80px",
+    marginBottom: tokens.spacingVerticalL,
+  },
+  title: {
+    marginBottom: tokens.spacingVerticalS,
+  },
+  body: {
+    marginBottom: tokens.spacingVerticalXXL,
+  },
+  spinnerContainer: {
+    display: "flex",
+    flexDirection: "column",
+    alignItems: "center",
+    justifyContent: "center",
+    height: "100vh",
   },
 });
+// --- End Styles ---
 
-const App: React.FC = () => {
-  // --- v9 Styling ---
+// --- Define Props Interface ---
+interface AppProps {
+  title: string;
+  isOfficeInitialized: boolean;
+}
+// --- End Props Interface ---
+
+const App: React.FC<AppProps> = ({ title, isOfficeInitialized }) => {
   const styles = useStyles();
 
-  // --- State & Refs ---
+  // --- State Definitions ---
   const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
-  const [isOfficeInitialized, setIsOfficeInitialized] = useState(false);
-  const pollIntervalId = useRef<number | null>(null);
+  const [token, setToken] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<Office.Dialog | null>(null);
+  const [isLoading, setIsLoading] = useState(true); // Start loading
+  const [polling, setPolling] = useState(false);
+  const [pollingInterval, setPollingInterval] = useState<NodeJS.Timeout | null>(null);
+  // --- End State Definitions ---
 
-  // --- Polling Logic ---
-  const stopPolling = () => {
-    if (pollIntervalId.current) {
-      clearInterval(pollIntervalId.current);
-      pollIntervalId.current = null;
-    }
-    setIsPolling(false);
-  };
+  // --- Constants ---
+  const apiBaseUrl = "https://localhost:5000/api/v1/auth";
+  const loginPageUrl = "https://localhost:3000/login";
+  const TOKEN_KEY = "fishchi-token"; // Storage key
+  // --- End Constants ---
 
-  // --- Office Initialize Effect ---
+  // ---
+  // ---
+  // ---
+  // --- NEW STRATEGY: Use async useEffect with OfficeRuntime.storage
+  // ---
+  // ---
+  // ---
   useEffect(() => {
-    // Ensure Office is initialized
-    if (Office.context) {
-      setIsOfficeInitialized(true);
-    } else {
-      // If Office isn't initialized yet, set up the Office.initialize handler
-      Office.initialize = () => {
-        setIsOfficeInitialized(true);
-      };
-    }
-  }, []);
+    // This async function checks for the stored token
+    const checkLoginStatus = async () => {
+      try {
+        // Use the new async storage API to get the token
+        const storedToken = await OfficeRuntime.storage.getItem(TOKEN_KEY);
 
-  // --- Token Check Effect (runs after Office is initialized) ---
-  useEffect(() => {
-    if (!isOfficeInitialized) {
-      return () => {
-        // No cleanup needed if Office is not initialized
-      };
-    }
-
-    try {
-      // 1. Check for existing token on load
-      if (Office.context && Office.context.roamingSettings) {
-        const token = Office.context.roamingSettings.get("jwt_token");
-        if (token) {
+        if (storedToken) {
+          console.log("Token found in OfficeRuntime.storage:", storedToken);
+          // TODO: Add token validation with server here
+          setToken(storedToken);
           setIsLoggedIn(true);
+        } else {
+          console.log("No token found in OfficeRuntime.storage.");
         }
+      } catch (e) {
+        console.error("Error accessing OfficeRuntime.storage on load:", e);
       }
-    } catch (error) {
-      console.error("Error accessing Office.context.roamingSettings:", error);
-    }
-
-    // 2. Cleanup function (runs on unmount)
-    return () => {
-      stopPolling();
+      // We are done checking, stop loading
+      setIsLoading(false);
     };
-  }, [isOfficeInitialized]); // Depends on Office initialization
 
-  // --- Login Handler ---
-  const handleLogin = () => {
-    if (!isOfficeInitialized) {
-      console.error("Office API is not initialized yet");
+    // We still need isOfficeInitialized to be true before we
+    // try to access *any* Office APIs, even OfficeRuntime.
+    if (isOfficeInitialized) {
+      console.log("Office is initialized, checking login status...");
+      checkLoginStatus();
+    } else {
+      console.log("Office not initialized, waiting...");
+    }
+  }, [isOfficeInitialized]);
+  // ---
+  // ---
+  // --- END NEW STRATEGY ---
+  // ---
+  // ---
+
+  // ---
+  // ---
+  // ---
+  // --- NEW STRATEGY: Save token using OfficeRuntime.storage
+  // ---
+  // ---
+  // ---
+  const pollForToken = (sessionId: string) => {
+    setPolling(true);
+    const interval = setInterval(async () => {
+      try {
+        const response = await fetch(`${apiBaseUrl}/poll-login/${sessionId}`);
+        if (!response.ok) {
+          console.error(`Polling error: ${response.statusText}`);
+          return;
+        }
+
+        const data = await response.json();
+        if (data.token) {
+          // --- Token Received ---
+          console.log("Token received from poll!", data.token);
+          clearInterval(interval);
+          setPollingInterval(null);
+          setPolling(false);
+
+          // Update React state
+          setToken(data.token);
+          setIsLoggedIn(true);
+          setIsLoading(false);
+          dialog?.close();
+
+          // --- THIS IS THE FIX ---
+          // Save the token IMMEDIATELY and ASYNCHRONOUSLY
+          try {
+            console.log("Attempting to save token to OfficeRuntime.storage...");
+            await OfficeRuntime.storage.setItem(TOKEN_KEY, data.token);
+            console.log("Token successfully saved to OfficeRuntime.storage.");
+          } catch (error) {
+            // This is very unlikely but good to have
+            console.error("Error saving token to OfficeRuntime.storage:", error);
+          }
+          // --- END OF FIX ---
+          // --- End Token Received ---
+        } else {
+          console.log("Polling... token not ready.");
+        }
+      } catch (error) {
+        console.error("Polling fetch error:", error);
+      }
+    }, 3000);
+    setPollingInterval(interval);
+  };
+  // ---
+  // ---
+  // --- END NEW STRATEGY ---
+  // ---
+  // ---
+
+  // --- FUNCTION: Handle Login ---
+  // This function still needs Office.context.ui, so the guard remains
+  const handleLogin = async () => {
+    if (!(Office && Office.context && Office.context.ui)) {
+      console.error("Cannot login: Office context (UI) is not ready.");
       return;
     }
 
+    setIsLoading(true);
     try {
-      // 1. Generate session ID
-      const sessionId = crypto.randomUUID();
+      const newSessionId = uuidv4();
+      setSessionId(newSessionId);
+      const loginUrl = `${loginPageUrl}?from=office&session_id=${newSessionId}`;
 
-      // 2. Open browser
-      const loginUrl = `https://localhost:3000/login?from=office&session_id=${sessionId}`;
-
-      if (Office.context && Office.context.ui) {
-        Office.context.ui.openBrowserWindow(loginUrl);
-
-        // 3. Start polling
-        setIsPolling(true);
-
-        pollIntervalId.current = window.setInterval(async () => {
-          try {
-            // Poll the HTTPS backend
-            const response = await fetch(
-              `https://localhost:5000/api/v1/auth/poll-login/${sessionId}`
-            );
-
-            if (response.ok) {
-              // 200 OK: Success
-              const data = await response.json();
-              if (data.token) {
-                stopPolling();
-                if (Office.context && Office.context.roamingSettings) {
-                  Office.context.roamingSettings.set("jwt_token", data.token);
-                  Office.context.roamingSettings.saveAsync((saveResult) => {
-                    if (saveResult.status === Office.AsyncResultStatus.Succeeded) {
-                      setIsLoggedIn(true);
-                    } else {
-                      console.error("Failed to save token to roaming settings");
-                    }
-                  });
-                } else {
-                  console.error("Office.context.roamingSettings is not available");
-                  // Still set the user as logged in even if we can't save the token
-                  setIsLoggedIn(true);
-                }
-              }
-              return;
-            } else if (response.status === 404) {
-              // 404 Not Found: Pending... (this is expected)
-              console.log("Polling... token not ready.");
-              return;
-            } else {
-              // Other error (e.g., 500)
-              console.error("Polling failed:", response.status);
-              stopPolling();
-              return;
-            }
-          } catch (err) {
-            console.error("Network error during polling:", err);
-            stopPolling();
+      Office.context.ui.displayDialogAsync(
+        loginUrl,
+        { height: 60, width: 40, displayInIframe: false },
+        (asyncResult) => {
+          if (asyncResult.status === Office.AsyncResultStatus.Failed) {
+            console.error("Dialog failed to open:", asyncResult.error.message);
+            setIsLoading(false);
             return;
           }
-        }, 3000); // Poll every 3 seconds
-      } else {
-        console.error("Office.context.ui is not available");
-      }
+          const dialogInstance = asyncResult.value;
+          setDialog(dialogInstance);
+
+          dialogInstance.addEventHandler(Office.EventType.DialogEventReceived, (arg: any) => {
+            if (arg.error === 12006 || arg.error === 12007) {
+              console.log("Dialog closed by user or navigated away.");
+              setIsLoading(false);
+              setPolling(false);
+              if (pollingInterval) {
+                clearInterval(pollingInterval);
+                setPollingInterval(null);
+              }
+            }
+          });
+        }
+      );
+
+      pollForToken(newSessionId);
     } catch (error) {
-      console.error("Error in handleLogin:", error);
+      console.error("Login process error:", error);
+      setIsLoading(false);
     }
   };
+  // --- END FUNCTION ---
 
-  // --- Render Logic ---
-  if (isLoggedIn) {
-    return (
-      <div className={styles.root}>
-        <Text weight="semibold">شما با موفقیت وارد شده‌اید!</Text>
-        <Text>می‌توانید از امکانات فیشچی در Word استفاده کنید.</Text>
-        {/* Main application UI (Project list, etc.) will go here */}
-      </div>
-    );
-  }
+  // ---
+  // ---
+  // ---
+  // --- NEW STRATEGY: Remove token using OfficeRuntime.storage
+  // ---
+  // ---
+  // ---
+  const handleLogout = async () => {
+    // Step 1: Immediately log out of the React UI state.
+    setToken(null);
+    setIsLoggedIn(false);
 
-  if (isPolling) {
+    // Step 2: Try to remove the token from persistent storage.
+    try {
+      console.log("Attempting to remove token from OfficeRuntime.storage...");
+      await OfficeRuntime.storage.removeItem(TOKEN_KEY);
+      console.log("Token successfully removed from OfficeRuntime.storage.");
+    } catch (error) {
+      console.error("Error removing token from OfficeRuntime.storage:", error);
+    }
+  };
+  // ---
+  // ---
+  // --- END NEW STRATEGY ---
+  // ---
+  // ---
+
+  // --- RENDER LOGIC ---
+  if (isLoading || polling) {
     return (
-      <div className={styles.root}>
-        <div className={styles.center}>
-          <Spinner label="در حال انتظار برای ورود..." />
-          <Text>لطفاً در مرورگری که باز شد، وارد شوید.</Text>
-          <Text size={200}>پس از ورود، این پنجره به طور خودکار به‌روز می‌شود.</Text>
+      <FluentProvider theme={webLightTheme}>
+        <div className={styles.spinnerContainer}>
+          <Spinner
+            size="huge"
+            label={
+              polling
+                ? "در حال بررسی وضعیت ورود... لطفاً پنجره مرورگر را بررسی کنید."
+                : "در حال بارگذاری..."
+            }
+          />
         </div>
-        <Button onClick={stopPolling}>لغو</Button>
-      </div>
+      </FluentProvider>
     );
   }
 
+  // Logged out state
+  if (!isLoggedIn) {
+    return (
+      <FluentProvider theme={webLightTheme}>
+        <div className={styles.container}>
+          <img src="assets/logo-filled.png" alt="Fishchi Logo" className={styles.logo} />
+          <Title1 className={styles.title}>به فیشچی خوش آمدید</Title1>
+          <Body1 className={styles.body}>برای دسترسی به پروژه‌ها و فیش‌های خود وارد شوید.</Body1>
+          <Button
+            appearance="primary"
+            size="large"
+            onClick={handleLogin}
+            disabled={!isOfficeInitialized}
+          >
+            ورود به حساب کاربری
+          </Button>
+        </div>
+      </FluentProvider>
+    );
+  }
+
+  // Logged in state
   return (
-    <div className={styles.root}>
-      <Text weight="semibold">به فیشچی خوش آمدید!</Text>
-      <Text>برای دسترسی به پروژه‌ها و فیش‌های خود، لطفاً وارد شوید.</Text>
-      {/* v9 Button: Use 'appearance' prop */}
-      <Button appearance="primary" onClick={handleLogin}>
-        ورود به حساب کاربری
-      </Button>
-    </div>
+    <FluentProvider theme={webLightTheme}>
+      <div style={{ padding: 20 }}>
+        <Title1>{title}</Title1>
+        <Body1>شما با موفقیت وارد شده‌اید.</Body1>
+        <Body1 style={{ wordBreak: "break-all", marginTop: "10px" }}>
+          Token: {token ? token.substring(0, 40) + "..." : "No Token"}
+        </Body1>
+        <Button
+          onClick={handleLogout}
+          appearance="primary"
+          style={{ marginTop: 20 }}
+          disabled={!isOfficeInitialized}
+        >
+          خروج
+        </Button>
+      </div>
+    </FluentProvider>
   );
+  // --- END RENDER LOGIC ---
 };
 
 export default App;
