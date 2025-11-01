@@ -3,33 +3,35 @@
  * See LICENSE in the project root for license information.
  */
 
-/* global Office */
+/* global Office, Word, console */
 
 Office.onReady(() => {
   // If needed, Office.js is ready to be called.
+  console.log("Office.js ready in commands.ts");
 });
 
 /**
  * Shows a notification when the add-in command is executed.
+ * This is a placeholder function for Word ribbon commands.
  * @param event
  */
 function action(event: Office.AddinCommands.Event) {
-  const message: Office.NotificationMessageDetails = {
-    type: Office.MailboxEnums.ItemNotificationMessageType.InformationalMessage,
-    message: "Performed action.",
-    icon: "Icon.80x80",
-    persistent: true,
-  };
+  // Perform some action with Word API
+  Word.run(async (context) => {
+    const body = context.document.body;
+    body.insertParagraph("Command executed from Fishchi add-in!", Word.InsertLocation.end);
+    await context.sync();
 
-  // Show a notification message.
-  Office.context.mailbox.item?.notificationMessages.replaceAsync(
-    "ActionPerformanceNotification",
-    message
-  );
+    console.log("Word command action performed");
 
-  // Be sure to indicate when the add-in command function is complete.
-  event.completed();
+    // Be sure to indicate when the add-in command function is complete.
+    event.completed();
+  }).catch((error) => {
+    console.error("Error in command action:", error);
+    event.completed();
+  });
 }
 
 // Register the function with Office.
+// This allows the function to be called from ribbon buttons defined in manifest.xml
 Office.actions.associate("action", action);

@@ -68,19 +68,36 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children, isOfficeIn
     setIsLoading(true);
     try {
       // 1. Open dialog and get token
+      console.log("AuthProvider: Step 1 - Opening login dialog...");
       const receivedToken = await authService.loginWithDialog();
+      console.log(
+        "AuthProvider: Step 1 - Token received:",
+        receivedToken ? "Yes (length: " + receivedToken.length + ")" : "No"
+      );
       setToken(receivedToken);
 
       // 2. Store token securely
+      console.log("AuthProvider: Step 2 - Storing token...");
       await authService.storeToken(receivedToken);
+      console.log("AuthProvider: Step 2 - Token stored successfully");
 
       // 3. Fetch user profile with new token
-      const profile = await apiGetSelfProfile();
+      console.log("AuthProvider: Step 3 - Fetching user profile...");
+      const profile = await apiGetSelfProfile(receivedToken);
+      console.log("AuthProvider: Step 3 - Profile received:", profile);
+
+      if (!profile) {
+        throw new Error("Profile is null or undefined");
+      }
+
       setUserProfile(profile);
       setIsAuthenticated(true);
       console.log("AuthProvider: Login successful!", profile.username);
     } catch (error: any) {
-      console.error("AuthProvider: Login process failed.", error.message);
+      console.error("AuthProvider: Login process failed.");
+      console.error("Error message:", error.message);
+      console.error("Full error:", error);
+      console.error("Error stack:", error.stack);
       setIsAuthenticated(false);
       setUserProfile(null);
       setToken(null);

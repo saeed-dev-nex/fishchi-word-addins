@@ -1,11 +1,13 @@
 // src/taskpane/services/authService.ts
+/* global Office, OfficeRuntime, console, fetch, setInterval, clearInterval */
+
 import { v4 as uuidv4 } from "uuid";
 
 const apiBaseUrl = "https://localhost:5000/api/v1/auth"; // ⚠️ [TODO]: Update with your v1 URL
 const loginPageUrl = "https://localhost:3000/login";
 const TOKEN_KEY = "fishchi-token";
 
-let pollingInterval: NodeJS.Timeout | null = null;
+let pollingInterval: ReturnType<typeof setInterval> | null = null;
 
 /**
  * Polls the server for a token associated with a session ID.

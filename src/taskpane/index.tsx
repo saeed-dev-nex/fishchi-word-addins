@@ -8,8 +8,6 @@ import { AuthProvider } from "./contexts/AuthContext";
 
 /* global document, Office */
 
-let isOfficeInitialized = false;
-
 const rootElement = document.getElementById("root");
 if (!rootElement) {
   throw new Error("Failed to find the root element.");
@@ -18,36 +16,37 @@ if (!rootElement) {
 const root = createRoot(rootElement);
 
 /**
- * Renders the component using the new React 18 root.render API
+ * AppWrapper component that manages Office initialization state
+ * This fixes the race condition where isOfficeInitialized was captured
+ * at render time and never updated when Office became ready
  */
-const render = (Component: React.FC) => {
-  root.render(
+const AppWrapper: React.FC = () => {
+  const [isOfficeInitialized, setIsOfficeInitialized] = React.useState(false);
+
+  React.useEffect(() => {
+    console.log("AppWrapper: Setting up Office.onReady listener...");
+
+    Office.onReady(() => {
+      console.log("Office.onReady() called, updating state.");
+      setIsOfficeInitialized(true);
+    });
+  }, []);
+
+  console.log("AppWrapper: Rendering with isOfficeInitialized =", isOfficeInitialized);
+
+  return (
     <React.StrictMode>
       <FluentProvider theme={webLightTheme}>
-        {/* We pass isOfficeInitialized to the provider
-            so it knows when to start checking for tokens.
-        */}
         <AuthProvider isOfficeInitialized={isOfficeInitialized}>
-          <Component />
+          <App />
         </AuthProvider>
       </FluentProvider>
     </React.StrictMode>
   );
 };
 
-/* Render application after Office initializes */
-Office.onReady(() => {
-  isOfficeInitialized = true;
-  console.log("Office.onReady() called, rendering app.");
-  render(App);
-});
-
-/* Initial render (App will show a spinner until Office is ready) */
-if (!isOfficeInitialized) {
-  console.log("Initial render, Office not yet ready.");
-  render(App);
-}
-
-// Note: HMR (Hot Module Replacement) logic would need to be
-// configured differently if it was in the original file,
-// but this structure is the correct baseline for React 18.
+/**
+ * Render the AppWrapper which handles Office initialization
+ */
+console.log("Initial render: Mounting AppWrapper component");
+root.render(<AppWrapper />);

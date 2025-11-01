@@ -1,4 +1,5 @@
 // src/taskpane/components/MainWorkspace.tsx
+/* global Word */
 
 import * as React from "react";
 import {
@@ -120,14 +121,14 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({ user }) => {
 
   // 3. Fetch notes when selectedSourceId changes
   React.useEffect(() => {
-    if (!selectedSourceId) {
+    if (!selectedSourceId || !selectedProjectId) {
       setNotes([]);
       return;
     }
     const fetchNotes = async () => {
       try {
         setIsLoading(true);
-        const fetchedNotes = await apiGetNotesBySource(selectedSourceId);
+        const fetchedNotes = await apiGetNotesBySource(selectedProjectId, selectedSourceId);
         setNotes(fetchedNotes);
         setSelectedTab("notes"); // Automatically switch to notes tab
       } catch (err: any) {
@@ -137,7 +138,7 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({ user }) => {
       }
     };
     fetchNotes();
-  }, [selectedSourceId]);
+  }, [selectedSourceId, selectedProjectId]);
 
   // --- Event Handlers ---
   const handleProjectChange = (_e: any, data: { optionValue?: string }) => {
@@ -152,10 +153,25 @@ export const MainWorkspace: React.FC<MainWorkspaceProps> = ({ user }) => {
     setSelectedSourceId(sourceId);
   };
 
-  const handleNoteClick = (note: Note) => {
-    // TODO: Phase 3 - Insert note content into Word
-    console.log("Insert note:", note.content);
-    // This is where we will call Word.run()
+  const handleNoteClick = async (note: Note) => {
+    try {
+      await Word.run(async (context) => {
+        const body = context.document.body;
+
+        // Insert the note content at the end of the document
+        // Since note.content is HTML, we use insertHtml
+        body.insertHtml(note.content, Word.InsertLocation.end);
+
+        // Add a line break after the note for separation
+        body.insertParagraph("", Word.InsertLocation.end);
+
+        await context.sync();
+        console.log("Note inserted successfully:", note._id);
+      });
+    } catch (error) {
+      console.error("Error inserting note into Word:", error);
+      setError("خطا در درج فیش به سند Word");
+    }
   };
 
   // --- Render Logic ---
