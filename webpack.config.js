@@ -36,14 +36,14 @@ module.exports = async (env, options) => {
       rules: [
         {
           test: /\.ts$/,
-          exclude: /node_modules/,
+          exclude: [/node_modules/, /\.test\.ts$/, /tests/],
           use: {
             loader: "babel-loader",
           },
         },
         {
           test: /\.tsx?$/,
-          exclude: /node_modules/,
+          exclude: [/node_modules/, /\.test\.tsx?$/, /tests/],
           use: ["ts-loader"],
         },
         {
@@ -101,7 +101,10 @@ module.exports = async (env, options) => {
       },
       server: {
         type: "https",
-        options: env.WEBPACK_BUILD || options.https !== undefined ? options.https : await getHttpsOptions(),
+        options:
+          env.WEBPACK_BUILD || options.https !== undefined
+            ? options.https
+            : await getHttpsOptions(),
       },
       port: process.env.npm_package_config_dev_server_port || 3000,
     },

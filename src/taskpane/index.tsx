@@ -5,6 +5,7 @@ import { createRoot } from "react-dom/client";
 import App from "./components/App";
 import { FluentProvider, webLightTheme } from "@fluentui/react-components";
 import { AuthProvider } from "./contexts/AuthContext";
+import ErrorBoundary from "./components/ErrorBoundary";
 
 /* global document, Office */
 
@@ -22,26 +23,42 @@ const root = createRoot(rootElement);
  */
 const AppWrapper: React.FC = () => {
   const [isOfficeInitialized, setIsOfficeInitialized] = React.useState(false);
+  const officeInitRef = React.useRef(false);
 
   React.useEffect(() => {
+    // Prevent multiple Office.onReady calls (especially in StrictMode)
+    if (officeInitRef.current) {
+      console.log("AppWrapper: Office.onReady already set up, skipping...");
+      return () => {}; // Return empty cleanup function to satisfy TypeScript
+    }
+
     console.log("AppWrapper: Setting up Office.onReady listener...");
+    officeInitRef.current = true;
 
     Office.onReady(() => {
       console.log("Office.onReady() called, updating state.");
       setIsOfficeInitialized(true);
     });
+
+    // Cleanup function
+    return () => {
+      console.log("AppWrapper: Cleaning up Office.onReady listener...");
+    };
   }, []);
 
   console.log("AppWrapper: Rendering with isOfficeInitialized =", isOfficeInitialized);
 
   return (
-    <React.StrictMode>
+    // StrictMode temporarily disabled to prevent double-render issues
+    // <React.StrictMode>
+    <ErrorBoundary>
       <FluentProvider theme={webLightTheme}>
         <AuthProvider isOfficeInitialized={isOfficeInitialized}>
           <App />
         </AuthProvider>
       </FluentProvider>
-    </React.StrictMode>
+    </ErrorBoundary>
+    // </React.StrictMode>
   );
 };
 

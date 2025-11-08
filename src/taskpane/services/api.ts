@@ -1,6 +1,15 @@
 /* global OfficeRuntime, console, fetch, window, RequestInit, Headers */
 
-import { Project, Source, Note, UserProfile } from "../types/fishchi";
+import {
+  Project,
+  Source,
+  Note,
+  UserProfile,
+  ApiResponse,
+  FormatCitationRequest,
+  FormattedCitation,
+  CitationStyle,
+} from "../types/fishchi";
 
 /**
  * Validates if a value is a valid object (not null, not array)
@@ -19,11 +28,10 @@ function isValidArray(value: any): boolean {
 }
 
 // This should point to your production or development server
-const API_V1_URL = "https://localhost:5000/api/v1"; // ⚠️ [TODO]: Update with your actual server URL
+const API_BASE_URL = "https://localhost:5000/api/v1"; // ⚠️ [TODO]: Update with your actual server URL
 
 /**
  * Retrieves the stored auth token (e.g., from localStorage or Office.settings).
- * This is a placeholder; you should implement it based on your auth logic.
  */
 async function getAuthToken(): Promise<string | null> {
   try {
@@ -35,7 +43,7 @@ async function getAuthToken(): Promise<string | null> {
 }
 /**
  * A helper function to perform authenticated fetch requests.
- * [MODIFIED] It now understands the server's `ApiResponse` wrapper
+ * It now understands the server's `ApiResponse` wrapper
  * and automatically unwraps the `.data` property.
  */
 async function authenticatedFetch(
@@ -67,16 +75,48 @@ async function authenticatedFetch(
     } catch {
       /* ignore */
     }
-    window.location.reload();
+    // AuthContext will handle showing login screen when this error is thrown
     throw new Error(`API Error: ${response.status} ${response.statusText}`);
   }
   if (!response.ok) {
-    throw new Error(`API Error: ${response.status} ${response.statusText}`);
+    // Try to get error details from response body
+    let errorMessage = `API Error: ${response.status} ${response.statusText}`;
+    try {
+      const errorBody = await response.json();
+      console.error(`❌ API Error Response [${response.status}]:`, {
+        url: url,
+        status: response.status,
+        statusText: response.statusText,
+        errorBody: errorBody,
+        message: errorBody?.message || errorBody?.error,
+      });
+
+      // Use server's error message if available
+      if (errorBody?.message) {
+        errorMessage = `${errorMessage}: ${errorBody.message}`;
+      } else if (errorBody?.error) {
+        errorMessage = `${errorMessage}: ${errorBody.error}`;
+      }
+    } catch (parseError) {
+      // If response body can't be parsed as JSON, try text
+      try {
+        const errorText = await response.text();
+        console.error(`❌ API Error Response [${response.status}] (text):`, {
+          url: url,
+          status: response.status,
+          errorText: errorText.substring(0, 500), // Log first 500 chars
+        });
+        if (errorText) {
+          errorMessage = `${errorMessage}: ${errorText.substring(0, 200)}`;
+        }
+      } catch (textError) {
+        console.error(`❌ Could not parse error response body:`, parseError);
+      }
+    }
+    throw new Error(errorMessage);
   }
   // --- End error handling ---
 
-  // [FIX] Unwrap the server's ApiResponse object
-  // We type the response to our new generic interface
   let apiResponse: any;
 
   try {
@@ -94,7 +134,6 @@ async function authenticatedFetch(
     url: url,
   });
 
-  // Handle different response structures
   // Case 1: {status: "success", data: {...}}
   if (apiResponse.status !== undefined) {
     console.log("Server uses 'status' field instead of 'success'");
@@ -144,7 +183,7 @@ async function authenticatedFetch(
  */
 export async function apiGetProjects(): Promise<Project[]> {
   try {
-    const response = await authenticatedFetch(`${API_V1_URL}/projects`);
+    const response = await authenticatedFetch(`${API_BASE_URL}/projects`);
 
     if (!isValidArray(response)) {
       console.error("Invalid projects response:", response);
@@ -163,13 +202,20 @@ export async function apiGetProjects(): Promise<Project[]> {
 }
 
 /**
- * Fetches all sources for a specific project.
- * Corresponds to: GET /api/sources?projectId=...
- * Returns paginated response with sources array
+ * Fetches all sources for a specific project OR unassigned sources.
+ * Corresponds to: GET /api/sources?projectId=... OR /api/sources?unassigned=true
+ * [MODIFIED] Accepts projectId as string or null.
  */
-export async function apiGetSourcesByProject(projectId: string): Promise<Source[]> {
+export async function apiGetSourcesByProject(projectId: string | null): Promise<Source[]> {
   try {
-    const response = await authenticatedFetch(`${API_V1_URL}/sources?projectId=${projectId}`);
+    // [MODIFIED] Create URL based on projectId.
+    // If projectId is null, we assume the API supports ?unassigned=true
+    // to fetch sources without a project.
+    const url = projectId
+      ? `${API_BASE_URL}/sources?projectId=${projectId}`
+      : `${API_BASE_URL}/sources?unassigned=true`;
+
+    const response = await authenticatedFetch(url);
 
     // Handle paginated response: { sources: [...], pagination: {...}, ... }
     if (isValidObject(response) && response.sources !== undefined) {
@@ -177,22 +223,22 @@ export async function apiGetSourcesByProject(projectId: string): Promise<Source[
         console.error("Invalid sources array in response:", response.sources);
         throw new Error("Expected sources to be an array, got: " + typeof response.sources);
       }
-      console.log(`Retrieved ${response.sources.length} sources for project ${projectId}`);
+      console.log(`Retrieved ${response.sources.length} sources.`);
       return response.sources;
     }
 
     // Fallback: if response is directly an array (for backwards compatibility)
     if (isValidArray(response)) {
-      console.log(`Retrieved ${response.length} sources for project ${projectId} (direct array)`);
+      console.log(`Retrieved ${response.length} sources (direct array)`);
       return response;
     }
 
     console.error("Invalid sources response:", response);
     throw new Error("Expected sources array or paginated response, got: " + typeof response);
   } catch (error: any) {
-    // If 404, return empty array (no sources in this project)
+    // If 404, return empty array (no sources found)
     if (error.message && error.message.includes("404")) {
-      console.warn(`No sources found for project ${projectId} (404), returning empty array`);
+      console.warn(`No sources found (404), returning empty array`);
       return [];
     }
     throw error; // Re-throw other errors
@@ -206,7 +252,7 @@ export async function apiGetSourcesByProject(projectId: string): Promise<Source[
 export async function apiGetNotesBySource(projectId: string, sourceId: string): Promise<Note[]> {
   try {
     const response = await authenticatedFetch(
-      `${API_V1_URL}/notes?projectId=${projectId}&sourceId=${sourceId}`
+      `${API_BASE_URL}/notes?projectId=${projectId}&sourceId=${sourceId}`
     );
 
     if (!isValidArray(response)) {
@@ -233,7 +279,7 @@ export async function apiGetSelfProfile(tokenOverride?: string): Promise<UserPro
   // Try the primary endpoint
   try {
     console.log("Attempting to fetch profile from /users/me");
-    const response = await authenticatedFetch(`${API_V1_URL}/users/me`, {}, tokenOverride);
+    const response = await authenticatedFetch(`${API_BASE_URL}/users/me`, {}, tokenOverride);
     console.log("Profile response from /users/me:", response);
 
     if (response && (response.username || response.email || response._id)) {
@@ -247,7 +293,7 @@ export async function apiGetSelfProfile(tokenOverride?: string): Promise<UserPro
 
   // Fallback to alternative endpoint
   console.log("Attempting to fetch profile from /users/profile");
-  const response = await authenticatedFetch(`${API_V1_URL}/users/profile`, {}, tokenOverride);
+  const response = await authenticatedFetch(`${API_BASE_URL}/users/profile`, {}, tokenOverride);
   console.log("Profile response from /users/profile:", response);
   console.log("Response type:", typeof response);
   console.log("Response keys:", response ? Object.keys(response) : "null/undefined");
@@ -320,4 +366,183 @@ export async function apiGetSelfProfile(tokenOverride?: string): Promise<UserPro
 
   console.log("✅ Profile validation passed!");
   return normalizedProfile;
+}
+
+export async function apiFormatCitation(
+  request: FormatCitationRequest & {
+    detectLanguage?: boolean;
+    sourceLanguage?: string;
+  }
+): Promise<FormattedCitation> {
+  // authenticatedFetch already unwraps the ApiResponse and returns the data directly
+  const data = await authenticatedFetch(`${API_BASE_URL}/export/format-citation`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+
+  // The data is already unwrapped by authenticatedFetch
+  return data as FormattedCitation;
+}
+/**
+ * Fetches a formatted bibliography from the server.
+ * Now accepts a 'lang' parameter.
+ */
+export async function apiFormatBibliography(
+  sourceIds: string[],
+  style: CitationStyle,
+  lang: "fa-IR" | "en-US" | "auto" //  Accept lang parameter including auto
+): Promise<string> {
+  console.log("📚 [apiFormatBibliography] Preparing request:", {
+    endpoint: `${API_BASE_URL}/export/format-bibliography`,
+    sourceIds: sourceIds,
+    sourceIdsCount: sourceIds.length,
+    style: style,
+    lang: lang,
+  });
+
+  try {
+    const data = await authenticatedFetch(`${API_BASE_URL}/export/format-bibliography`, {
+      method: "POST",
+      body: JSON.stringify({
+        sourceIds: sourceIds,
+        style: style,
+        lang: lang, //  Pass the selected lang to the server
+      }),
+    });
+
+    console.log("✅ [apiFormatBibliography] Response received:", {
+      hasData: !!data,
+      hasHtml: !!data?.html,
+      htmlLength: data?.html?.length,
+      dataKeys: data ? Object.keys(data) : [],
+    });
+
+    if (!data || !data.html) {
+      console.error("❌ [apiFormatBibliography] Invalid response structure:", data);
+      throw new Error("Invalid bibliography response: missing html property");
+    }
+
+    return data.html;
+  } catch (error: any) {
+    console.error("❌ [apiFormatBibliography] Request failed:", {
+      error: error.message,
+      stack: error.stack,
+      sourceIds: sourceIds,
+      style: style,
+      lang: lang,
+    });
+    throw error;
+  }
+}
+
+// [NEW] Calls the AI translation endpoint on the server
+/**
+ * Translates a given text using the AI service.
+ * @param text The text to translate (e.g., an in-text citation).
+ * @param targetLang The target language (defaults to "Persian").
+ * @returns The translated text.
+ */
+export async function apiTranslateText(
+  text: string,
+  targetLang: string = "Persian"
+): Promise<string> {
+  console.log(`🤖 [apiTranslateText] Requesting translation for: "${text}"`);
+  try {
+    const data = await authenticatedFetch(`${API_BASE_URL}/ai/translate`, {
+      method: "POST",
+      body: JSON.stringify({
+        text: text,
+        targetLang: targetLang,
+      }),
+    });
+
+    // The server returns { translatedText: "..." }
+    if (data && data.translatedText) {
+      console.log(`✅ [apiTranslateText] Translation received: "${data.translatedText}"`);
+      return data.translatedText;
+    } else {
+      console.error("❌ [apiTranslateText] Invalid translation response:", data);
+      throw new Error("Invalid translation response from server");
+    }
+  } catch (error: any) {
+    console.error("❌ [apiTranslateText] Translation request failed:", {
+      error: error.message,
+      stack: error.stack,
+      text: text,
+    });
+    // Fallback: return the original text if translation fails
+    return text;
+  }
+}
+
+/**
+ * Manages Vancouver citation numbering
+ * @param action - Action to perform: 'reset', 'get', or 'set'
+ * @param orderMap - Order map for 'set' action
+ */
+export async function apiManageVancouverNumbering(
+  action: "reset" | "get" | "set",
+  orderMap?: Record<string, number>
+): Promise<any> {
+  const requestBody: any = { action };
+  if (action === "set" && orderMap) {
+    requestBody.orderMap = orderMap;
+  }
+
+  const response = await authenticatedFetch(`${API_BASE_URL}/export/manage-vancouver-numbering`, {
+    method: "POST",
+    body: JSON.stringify(requestBody),
+  });
+
+  // This function seems to return the raw response, not unwrapped data.
+  // We'll assume the original implementation was correct.
+  // *Correction*: authenticatedFetch *always* unwraps.
+  // The original file had a .json() call here, which was wrong.
+  // We will trust authenticatedFetch.
+
+  return response; // response is already the unwrapped 'data'
+}
+
+/**
+ * Enhanced citation formatting with Vancouver numbering support
+ * @param request - Citation request with additional options
+ */
+export async function apiFormatCitationWithOptions(
+  request: FormatCitationRequest & {
+    citationOrder?: string[];
+    resetVancouverOrder?: boolean;
+  }
+): Promise<FormattedCitation> {
+  const data = await authenticatedFetch(`${API_BASE_URL}/export/format-citation`, {
+    method: "POST",
+    body: JSON.stringify(request),
+  });
+
+  return data as FormattedCitation;
+}
+
+/**
+ * Enhanced bibliography formatting with citation ordering
+ * @param sourceIds - Array of source IDs
+ * @param style - Citation style
+ * @param lang - Language
+ * @param citationOrder - Order of citations for Vancouver numbering
+ */
+export async function apiFormatBibliographyWithOrder(
+  sourceIds: string[],
+  style: CitationStyle,
+  lang: "fa-IR" | "en-US" | "auto",
+  citationOrder: string[] = []
+): Promise<string> {
+  const data = await authenticatedFetch(`${API_BASE_URL}/export/format-bibliography`, {
+    method: "POST",
+    body: JSON.stringify({
+      sourceIds: sourceIds,
+      style: style,
+      lang: lang,
+      citationOrder: citationOrder,
+    }),
+  });
+
+  return data.html;
 }

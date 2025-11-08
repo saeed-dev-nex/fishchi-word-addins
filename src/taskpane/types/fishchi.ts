@@ -5,7 +5,8 @@
  */
 export interface Project {
   _id: string;
-  name: string;
+  title: string;
+  sources: string[]; // Array of Source IDs
   description?: string;
   user: string; // User ID
   createdAt: string;
@@ -22,9 +23,10 @@ export interface Source {
   user: string; // User ID
   type: string; // e.g., 'book', 'article-journal'
   title: string;
-  authors: { firstName?: string; lastName: string }[];
+  authors: { firstname?: string; lastname: string }[];
   year?: string;
   publisher?: string;
+  language?: string; // Language of the source (e.g., 'persian', 'english', 'fa-IR', 'en-US')
   // ... other CSL fields as needed
   createdAt: string;
   updatedAt: string;
@@ -60,4 +62,35 @@ export interface ApiResponse<T> {
   data: T; // The actual data is nested inside this 'data' property
   message: string;
   success: boolean;
+}
+
+/**
+ * Defines the available citation styles.
+ * These MUST match the file names in `server/node_modules/csl-styles`
+ */
+export type CitationStyle =
+  | "apa"
+  | "mla"
+  | "chicago-author-date"
+  | "vancouver"
+  | "harvard-cite-them-right";
+
+/**
+ * The data sent to the server to format a citation.
+ */
+export interface FormatCitationRequest {
+  sourceId: string;
+  style: CitationStyle;
+  // We can add more source IDs later for complex citations
+  // itemIdsToCite: string[];
+}
+
+/**
+ * The formatted data received from the server.
+ */
+export interface FormattedCitation {
+  sourceId: string;
+  style: CitationStyle;
+  inText: string; // The in-text citation, e.g., "(Doe, 2025)"
+  bibliography: string; // The full bibliography entry
 }

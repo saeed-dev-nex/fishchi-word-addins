@@ -9,29 +9,30 @@
     "module": "ES2020",
     "moduleResolution": "node",
     "noImplicitReturns": true,
-    "noUnusedParameters": true,
+    "noUnusedParameters": false,
     "outDir": "dist",
     "removeComments": false,
     "sourceMap": true,
-    "target": "es5",
-    "lib": [
-      "es7",
-      "dom"
-    ],
+    "target": "ES2015",
+    "downlevelIteration": true,
+    "lib": ["ES2015", "ES2017", "dom"],
     "pretty": true,
-    "typeRoots": [
-      "node_modules/@types"
-    ]
+    "typeRoots": ["node_modules/@types"]
   },
   "exclude": [
-    "node_modules"
+    "node_modules",
+    "tests",
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "**/*.spec.ts",
+    "**/*.spec.tsx"
   ],
   "compileOnSave": false,
   "buildOnSave": false,
-  "ts-node": { 
+  "ts-node": {
     "compilerOptions": {
       "module": "commonjs"
     },
-    "files": true 
+    "files": true
   }
 }
