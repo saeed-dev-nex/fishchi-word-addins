@@ -94,3 +94,19 @@ export interface FormattedCitation {
   inText: string; // The in-text citation, e.g., "(Doe, 2025)"
   bibliography: string; // The full bibliography entry
 }
+export const UNASSIGNED_PROJECT_ID = "___UNASSIGNED___";
+
+export const CITATION_STYLES = [
+  { value: "apa", label: "APA" },
+  { value: "mla", label: "MLA" },
+  { value: "vancouver", label: "Vancouver" },
+  { value: "chicago-author-date", label: "Chicago" },
+  { value: "harvard-cite-them-right", label: "Harvard" },
+] as const;
+
+export const BIBLIOGRAPHY_LANGUAGES = [
+  { value: "fa-IR", label: "فارسی (پیش‌فرض)" },
+  { value: "en-US", label: "English" },
+] as const;
+
+export type BibLanguage = "fa-IR" | "en-US";

@@ -556,10 +556,10 @@ export const syncCitationsWithBibliography = async (keepSourceIds: string[]): Pr
             console.log(`🗑️ Queuing removal for source: ${sourceId}`);
             // Get paragraph, load font, and add to lists
             const paraCollection = control.getRange("Content").paragraphs; // [FIX] Get paragraph collection
-            
+
             // [FIX] Load 'items' AND 'font' for each item in the collection
-            paraCollection.load("items/font"); 
-            
+            paraCollection.load("items/font");
+
             paraCollectionsToHighlight.push(paraCollection); // Add collection to list
             controlsToDelete.push(control); // Add control to list
 
@@ -570,7 +570,7 @@ export const syncCitationsWithBibliography = async (keepSourceIds: string[]): Pr
       }
 
       // 3. Execute all queued loads (fonts and items)
-      await context.sync(); 
+      await context.sync();
 
       // 4. Now that fonts/items are loaded, apply changes
       for (const paraCollection of paraCollectionsToHighlight) {

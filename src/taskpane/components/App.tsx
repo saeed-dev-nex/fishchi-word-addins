@@ -2,7 +2,7 @@ import * as React from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { LoadingSpinner } from "./LoadingSpinner";
 import { LoginScreen } from "./LoginScreen";
-import { MainWorkspace } from "./MainWorkspace";
+import { MainWorkspace } from "./MainWorkSpace/index";
 
 // AppProps is no longer needed as title/isOfficeInitialized are in the context
 const App: React.FC = () => {
